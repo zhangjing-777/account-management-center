@@ -41,22 +41,22 @@ async def update_user_subscription(email: str, level: str, stripe_customer_id: s
             "Content-Type": "application/json"
         }
         try:
-            # 1. 更新 user_level 表
+            # 1. 更新 user_level_en 表
             await client.patch(
-                f"{SUPABASE_URL}/rest/v1/user_level?email=eq.{email}",
+                f"{SUPABASE_URL}/rest/v1/user_level_en?email=eq.{email}",
                 headers=headers,
                 json={"subscription_status": level, "stripe_customer_id": stripe_customer_id}
             )
             # 2. 更新 receipt_usage_quota_request 表
             request_limit = 100 if level == "pro" else 5
             await client.patch(
-                f"{SUPABASE_URL}/rest/v1/receipt_usage_quota_request?email=eq.{email}",
+                f"{SUPABASE_URL}/rest/v1/receipt_usage_quota_request_en?email=eq.{email}",
                 headers=headers,
                 json={"month_limit": request_limit}
             )
             # 3. 更新 receipt_usage_quota_receipt 表
             await client.patch(
-                f"{SUPABASE_URL}/rest/v1/receipt_usage_quota_receipt?email=eq.{email}",
+                f"{SUPABASE_URL}/rest/v1/receipt_usage_quota_receipt_en?email=eq.{email}",
                 headers=headers,
                 json={"month_limit": request_limit}
             )

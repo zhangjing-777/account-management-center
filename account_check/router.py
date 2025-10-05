@@ -22,9 +22,9 @@ async def account_check(request: AccountCheckRequest):
           COALESCE(ruq.used_month, 0) AS usage_quota_request,
           COALESCE(rur.month_limit, 0) AS receipt_month_limit,
           COALESCE(ruq.month_limit, 0) AS request_month_limit
-        FROM user_level ul
-        LEFT JOIN receipt_usage_quota_receipt rur ON ul.user_id = rur.user_id
-        LEFT JOIN receipt_usage_quota_request ruq ON ul.user_id = ruq.user_id
+        FROM user_level_en ul
+        LEFT JOIN receipt_usage_quota_receipt_en rur ON ul.user_id = rur.user_id
+        LEFT JOIN receipt_usage_quota_request_en ruq ON ul.user_id = ruq.user_id
         WHERE ul.user_id = $1;
         """
         record = await conn.fetchrow(query, request.user_id)

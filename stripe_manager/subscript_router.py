@@ -29,7 +29,7 @@ async def create_customer_portal(request: EmailRequest):
     """
     try:
         # 从Supabase查询stripe_customer_id
-        result = supabase.table("user_level").select("stripe_customer_id").eq("email", request.email).execute()
+        result = supabase.table("user_level_en").select("stripe_customer_id").eq("email", request.email).execute()
         
         if not result.data or not result.data[0].get("stripe_customer_id"):
             raise HTTPException(status_code=404, detail="Customer not found")
