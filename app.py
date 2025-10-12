@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
+from core.database import close_db
 from auth_new_user.scheduler import job_scheduler
 from account_check.router import router as account_check_routers
 from auth_new_user.router import router as auth_new_user_routers
@@ -12,10 +13,8 @@ from stripe_manager.paid_router import router as stripe_paid_routers
 from stripe_manager.subscript_router import router as stripe_subscript_routers
 from stripe_manager.webhook_handle_router import router as stripe_webhook_routers
 
-# 创建logs目录
 os.makedirs('logs', exist_ok=True)
 
-# 配置日志格式和存储
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -29,19 +28,16 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Handle application startup and shutdown"""
-    # Startup
     logger.info("Starting User Management API")
     job_scheduler.start()
     logger.info("Application startup completed")
     
     yield
     
-    # Shutdown
     logger.info("Shutting down User Management API")
     job_scheduler.stop()
+    await close_db()
     logger.info("Application shutdown completed")
-
 
 app = FastAPI(
     title="User Management API",
@@ -50,7 +46,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 包含路由
 app.include_router(account_check_routers)
 app.include_router(auth_new_user_routers)
 app.include_router(stripe_paid_routers)
@@ -61,13 +56,10 @@ app.include_router(contact_individual_routers)
 
 @app.get("/health")
 async def health_check():
-    """健康检查接口"""
     logger.info("Health check requested")
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """全局异常处理器"""
     logger.exception(f"Unhandled exception occurred: {str(exc)}")
     return {"error": "Internal server error", "status": "error"}

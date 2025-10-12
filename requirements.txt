@@ -1,11 +1,13 @@
 fastapi
 uvicorn[standard]
 asyncpg
+sqlalchemy[asyncio]
+greenlet
 supabase
 pydantic[email]
 python-dotenv
 cryptography
 stripe
 apscheduler
-loguru
 pydantic-settings
+

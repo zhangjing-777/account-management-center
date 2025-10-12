@@ -1,14 +1,11 @@
-import os
 import base64
 import logging
 from cryptography.fernet import Fernet
-from dotenv import load_dotenv
-
-load_dotenv()
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-ENCRYPTION_KEY = base64.b64decode(os.getenv("ENCRYPTION_KEY"))
+ENCRYPTION_KEY = settings.encryption_key_bytes
 fernet = Fernet(ENCRYPTION_KEY.encode() if isinstance(ENCRYPTION_KEY, str) else ENCRYPTION_KEY)
 
 # 需要加密的敏感字段

@@ -1,28 +1,24 @@
-from fastapi import APIRouter, Request, HTTPException
-import httpx
+from fastapi import APIRouter, Request, HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update
 import logging
 import stripe
 import json
-from config import settings
+from core.database import get_db
+from core.models import UserLevelEn, ReceiptUsageQuotaReceiptEn, ReceiptUsageQuotaRequestEn
+from core.config import settings
 
-SUPABASE_URL = settings.supabase_url
-SUPABASE_KEY = settings.supabase_key
-STRIPE_SECRET = settings.stripe_webhook_secret
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/stripe", tags=["stripe webhook handle manager(接收和处理 Stripe 的 webhook 事件，并同步用户订阅信息到 Supabase)"])
+router = APIRouter(prefix="/stripe", tags=["stripe webhook handle manager(接收和处理 Stripe 的 webhook 事件，并同步用户订阅信息)"])
 
-# 签名验证函数
 def verify_stripe_signature(payload: bytes, header_signature: str) -> bool:
-    """
-    使用Stripe官方库验证签名 (推荐方式)
-    """
     try:
         event = stripe.Webhook.construct_event(
             payload,
             header_signature,
-            STRIPE_SECRET
+            settings.stripe_webhook_secret
         )
         return True
     except ValueError as e:
@@ -32,41 +28,48 @@ def verify_stripe_signature(payload: bytes, header_signature: str) -> bool:
         logging.error(f"Invalid signature: {e}")
         return False
 
-async def update_user_subscription(email: str, level: str, stripe_customer_id: str):
-    logging.info(f"Updating subscription for email={email} to level={level}")
-    async with httpx.AsyncClient() as client:
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type": "application/json"
-        }
-        try:
-            # 1. 更新 user_level_en 表
-            await client.patch(
-                f"{SUPABASE_URL}/rest/v1/user_level_en?email=eq.{email}",
-                headers=headers,
-                json={"subscription_status": level, "stripe_customer_id": stripe_customer_id}
-            )
-            # 2. 更新 receipt_usage_quota_request 表
-            request_limit = 100 if level == "pro" else 5
-            await client.patch(
-                f"{SUPABASE_URL}/rest/v1/receipt_usage_quota_request_en?email=eq.{email}",
-                headers=headers,
-                json={"month_limit": request_limit}
-            )
-            # 3. 更新 receipt_usage_quota_receipt 表
-            await client.patch(
-                f"{SUPABASE_URL}/rest/v1/receipt_usage_quota_receipt_en?email=eq.{email}",
-                headers=headers,
-                json={"month_limit": request_limit}
-            )
-            logging.info(f"Subscription update for email={email} completed.")
-        except Exception as e:
-            logging.error(f"Error updating subscription for email={email}: {e}")
-
+async def update_user_subscription(db: AsyncSession, user_id: str, level: str, stripe_customer_id: str):
+    logging.info(f"Updating subscription for user_id={user_id} to level={level}")
+    
+    try:
+        # 1. 更新 user_level_en 表
+        stmt1 = (
+            update(UserLevelEn)
+            .where(UserLevelEn.user_id == user_id)
+            .values(subscription_status=level, stripe_customer_id=stripe_customer_id)
+        )
+        result1 = await db.execute(stmt1)
+        logger.info(f"user_level_en updated: {result1.rowcount} rows")
+        
+        # 2. 更新 receipt_usage_quota_request_en 表
+        request_limit = 100 if level == "pro" else 5
+        stmt2 = (
+            update(ReceiptUsageQuotaRequestEn)
+            .where(ReceiptUsageQuotaRequestEn.user_id == user_id)
+            .values(month_limit=request_limit)
+        )
+        result2 = await db.execute(stmt2)
+        logger.info(f"receipt_usage_quota_request_en updated: {result2.rowcount} rows")
+        
+        # 3. 更新 receipt_usage_quota_receipt_en 表
+        stmt3 = (
+            update(ReceiptUsageQuotaReceiptEn)
+            .where(ReceiptUsageQuotaReceiptEn.user_id == user_id)
+            .values(month_limit=request_limit)
+        )
+        result3 = await db.execute(stmt3)
+        logger.info(f"receipt_usage_quota_receipt_en updated: {result3.rowcount} rows")
+        
+        await db.commit()
+        logging.info(f"Subscription update for user_id={user_id} completed.")
+        
+    except Exception as e:
+        await db.rollback()
+        logging.error(f"Error updating subscription for user_id={user_id}: {e}")
+        raise
 
 @router.post("/webhook-handle")
-async def stripe_webhook(request: Request):
+async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     try:
         raw_body = await request.body()
         payload = json.loads(raw_body)
@@ -79,24 +82,30 @@ async def stripe_webhook(request: Request):
             raise HTTPException(status_code=400, detail="Invalid signature")
 
         event_type = payload.get("type")
-        email = payload.get("data", {}).get("object",{}).get("customer_email")
-        if not email:
-            logging.warning("Missing email in data")
-            raise HTTPException(status_code=400, detail="Missing email in data")
-        logging.info(f"Received event_type={event_type} for email={email}")
+        
+        # 从 metadata 中获取 user_id
+        user_id = payload.get("data", {}).get("object", {}).get("metadata", {}).get("user_id")
+        if not user_id:
+            logging.warning("Missing user_id in metadata")
+            raise HTTPException(status_code=400, detail="Missing user_id in metadata")
+        
+        logging.info(f"Received event_type={event_type} for user_id={user_id}")
 
-        stripe_customer_id = payload.get("data", {}).get("object",{}).get("customer")
-        # 更新 Supabase 状态
+        stripe_customer_id = payload.get("data", {}).get("object", {}).get("customer")
+        
+        # 更新数据库状态
         if event_type == "invoice.payment_succeeded":
-            await update_user_subscription(email, "pro", stripe_customer_id)
-            logging.info(f"User {email} upgraded to pro.")
+            await update_user_subscription(db, user_id, "pro", stripe_customer_id)
+            logging.info(f"User {user_id} upgraded to pro.")
         elif event_type == "customer.subscription.deleted":
-            await update_user_subscription(email, "free", stripe_customer_id)
-            logging.info(f"User {email} downgraded to free.")
+            await update_user_subscription(db, user_id, "free", stripe_customer_id)
+            logging.info(f"User {user_id} downgraded to free.")
         else:
             logging.info(f"Unhandled event_type: {event_type}")
-        logging.info(f"Webhook processing completed for email={email}")
+        
+        logging.info(f"Webhook processing completed for user_id={user_id}")
         return {"status": "success"}
+        
     except Exception as e:
         logging.error(f"Error in webhook handler: {e}")
         raise

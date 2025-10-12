@@ -1,17 +1,18 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from datetime import datetime, timezone
-import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, delete
+from sqlalchemy.dialects.postgresql import insert
+from core.database import get_db
+from core.models import EnterpriseContact
+from core.encryption import encrypt_data, decrypt_value
 import logging
-from encryption import encrypt_data, decrypt_value
-from config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/contact", tags=["contact for enterprise"])
 
-
-# 输入模型
 class EnterpriseContactRequest(BaseModel):
     company_email: str
     company_name: str
@@ -19,15 +20,12 @@ class EnterpriseContactRequest(BaseModel):
     number_employees: str
     message: str
 
-
 @router.post("/enterprise-insert-update")
-async def enterprise_contact_process(body: EnterpriseContactRequest):
+async def enterprise_contact_process(body: EnterpriseContactRequest, db: AsyncSession = Depends(get_db)):
     """处理企业联系表单，写入 enterprise_contact 表 (email, company_name, industry, message 加密)"""
     try:
-        conn = await asyncpg.connect(dsn=settings.database_url,statement_cache_size=0)
         logger.info(f"Enterprise contact form received: email={body.company_email}")
 
-        # --- 加密敏感字段 ---
         encrypted_data = encrypt_data("enterprise_contact", {
             "email": body.company_email,
             "company_name": body.company_name,
@@ -35,79 +33,79 @@ async def enterprise_contact_process(body: EnterpriseContactRequest):
             "message": body.message,
         })
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
-        # --- UPSERT 插入/更新 ---
-        query = """
-        INSERT INTO public.enterprise_contact 
-            (email, email_hash, company_name, industry, number_employees, message, created_at, updated_at)
-        VALUES 
-            ($1, encode(digest($2, 'sha256'), 'hex'), $3, $4, $5, $6, $7, $7)
-        ON CONFLICT (email_hash)
-        DO UPDATE SET 
-            company_name = EXCLUDED.company_name,
-            industry = EXCLUDED.industry,
-            number_employees = EXCLUDED.number_employees,
-            message = EXCLUDED.message,
-            updated_at = EXCLUDED.updated_at
-        RETURNING id, email, company_name, industry, number_employees, message, created_at, updated_at;
-        """
+        stmt = insert(EnterpriseContact).values(
+            email=encrypted_data["email"],
+            email_hash=func.encode(func.digest(body.company_email, 'sha256'), 'hex'),
+            company_name=encrypted_data["company_name"],
+            industry=encrypted_data["industry"],
+            number_employees=body.number_employees,
+            message=encrypted_data["message"],
+            created_at=now,
+            updated_at=now
+        ).on_conflict_do_update(
+            index_elements=['email_hash'],
+            set_={
+                'company_name': encrypted_data["company_name"],
+                'industry': encrypted_data["industry"],
+                'number_employees': body.number_employees,
+                'message': encrypted_data["message"],
+                'updated_at': now
+            }
+        ).returning(EnterpriseContact)
 
-        record = await conn.fetchrow(
-            query,
-            encrypted_data["email"],  # 存密文
-            body.company_email,       # 原文用于生成 hash
-            encrypted_data["company_name"],
-            encrypted_data["industry"],
-            body.number_employees,    # number_employees 不加密
-            encrypted_data["message"],
-            now,
-        )
+        result = await db.execute(stmt)
+        record = result.scalar_one()
+        await db.commit()
 
-        await conn.close()
-        logger.info(f"Enterprise contact upsert success: id={record['id']} email={body.company_email}")
+        logger.info(f"Enterprise contact upsert success: id={record.id} email={body.company_email}")
 
         return {
             "message": "Enterprise contact saved successfully",
-            "data": dict(record),
+            "data": {
+                "id": record.id,
+                "email": record.email,
+                "company_name": record.company_name,
+                "industry": record.industry,
+                "number_employees": record.number_employees,
+                "message": record.message,
+                "created_at": record.created_at,
+                "updated_at": record.updated_at
+            },
             "status": "success"
         }
 
     except Exception as e:
+        await db.rollback()
         logger.exception(f"Failed to process enterprise contact form: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# ========== 查询接口（通过 email 获取并解密） ==========
 @router.get("/enterprise-check")
-async def get_enterprise_contact(email: str):
+async def get_enterprise_contact(email: str = Query(..., description="企业邮箱"), db: AsyncSession = Depends(get_db)):
     """根据 email 查询 enterprise_contact 记录并解密"""
     try:
-        conn = await asyncpg.connect(dsn=settings.database_url,statement_cache_size=0)
         logger.info(f"Querying enterprise_contact by email={email}")
 
-        query = """
-        SELECT id, email, company_name, industry, number_employees, message, created_at, updated_at
-        FROM public.enterprise_contact
-        WHERE email_hash = encode(digest($1, 'sha256'), 'hex')
-        LIMIT 1;
-        """
-        record = await conn.fetchrow(query, email)
-        await conn.close()
+        stmt = select(EnterpriseContact).where(
+            EnterpriseContact.email_hash == func.encode(func.digest(email, 'sha256'), 'hex')
+        )
+        
+        result = await db.execute(stmt)
+        record = result.scalar_one_or_none()
 
         if not record:
             return {"message": "No enterprise contact found", "status": "success", "data": None}
 
-        # --- 解密 ---
         decrypted = {
-            "id": record["id"],
-            "email": decrypt_value(record["email"]),
-            "company_name": decrypt_value(record["company_name"]),
-            "industry": decrypt_value(record["industry"]),
-            "number_employees": record["number_employees"],
-            "message": decrypt_value(record["message"]),
-            "created_at": record["created_at"],
-            "updated_at": record["updated_at"],
+            "id": record.id,
+            "email": decrypt_value(record.email),
+            "company_name": decrypt_value(record.company_name),
+            "industry": decrypt_value(record.industry),
+            "number_employees": record.number_employees,
+            "message": decrypt_value(record.message),
+            "created_at": record.created_at,
+            "updated_at": record.updated_at,
         }
 
         return {"message": "Query success", "status": "success", "data": decrypted}
@@ -119,33 +117,36 @@ async def get_enterprise_contact(email: str):
 @router.delete("/enterprise-delete")
 async def delete_enterprise_contact(
     id: int = Query(None, description="记录主键 id"),
-    email: str = Query(None, description="企业邮箱")
+    email: str = Query(None, description="企业邮箱"),
+    db: AsyncSession = Depends(get_db)
 ):
     """删除 enterprise_contact 表记录（支持 id 或 email）"""
     try:
         if not id and not email:
             raise HTTPException(status_code=400, detail="必须提供 id 或 email")
 
-        conn = await asyncpg.connect(dsn=settings.database_url,statement_cache_size=0)
-
         if id:
-            query = "DELETE FROM public.enterprise_contact WHERE id = $1 RETURNING id;"
-            record = await conn.fetchrow(query, id)
+            stmt = delete(EnterpriseContact).where(EnterpriseContact.id == id).returning(EnterpriseContact.id)
         else:
-            query = """
-            DELETE FROM public.enterprise_contact
-            WHERE email_hash = encode(digest($1, 'sha256'), 'hex')
-            RETURNING id;
-            """
-            record = await conn.fetchrow(query, email)
+            stmt = delete(EnterpriseContact).where(
+                EnterpriseContact.email_hash == func.encode(func.digest(email, 'sha256'), 'hex')
+            ).returning(EnterpriseContact.id)
 
-        await conn.close()
+        result = await db.execute(stmt)
+        deleted_id = result.scalar_one_or_none()
+        await db.commit()
 
-        if not record:
+        if not deleted_id:
             return {"message": "Record not found", "deleted": False, "status": "failed"}
 
-        return {"message": "Enterprise contact deleted successfully", "deleted": True, "id": record["id"], "status": "success"}
+        return {
+            "message": "Enterprise contact deleted successfully",
+            "deleted": True,
+            "id": deleted_id,
+            "status": "success"
+        }
 
     except Exception as e:
+        await db.rollback()
         logger.exception(f"Failed to delete enterprise contact: {e}")
         raise HTTPException(status_code=500, detail=str(e))

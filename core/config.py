@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+import base64
 
 class Settings(BaseSettings):
     # 数据库连接参数
@@ -20,11 +21,16 @@ class Settings(BaseSettings):
         env_file = ".env"
     
     @property
+    def encryption_key_bytes(self) -> bytes:
+        """Convert base64 encoded key to bytes"""
+        return base64.b64decode(self.encryption_key)
+    
+    @property
     def database_url(self) -> str:
         """Construct database URL from individual components"""
         import urllib.parse
         password = urllib.parse.quote_plus(self.db_password)
-        return f"postgresql://{self.db_user}:{password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        return f"postgresql+asyncpg://{self.db_user}:{password}@{self.db_host}:{self.db_port}/{self.db_name}"
 
 
 settings = Settings()
