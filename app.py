@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 from core.database import close_db
 from auth_new_user.scheduler import job_scheduler
 from account_check.router import router as account_check_routers
@@ -44,6 +45,15 @@ app = FastAPI(
     description="FastAPI service for managing users with encrypted email storage (EU GDPR compliant)",
     version="1.0.0",
     lifespan=lifespan
+)
+
+# 添加CORS中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(account_check_routers)
