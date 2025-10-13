@@ -1,10 +1,12 @@
 from sqlalchemy import Column, String, Integer, DateTime, func, Text, Date
+from sqlalchemy.dialects.postgresql import UUID
 from core.database import Base
+
 
 class UserLevelEn(Base):
     __tablename__ = "user_level_en"
     
-    user_id = Column(String, primary_key=True)
+    user_id = Column(UUID(as_uuid=True), primary_key=True)
     email = Column(Text, nullable=False)
     subscription_status = Column(Text)
     paypal_subscription_id = Column(Text)
@@ -15,7 +17,7 @@ class UserLevelEn(Base):
 class ReceiptUsageQuotaReceiptEn(Base):
     __tablename__ = "receipt_usage_quota_receipt_en"
     
-    user_id = Column(String, primary_key=True)
+    user_id = Column(UUID(as_uuid=True), primary_key=True)
     email = Column(Text, nullable=False)
     month_limit = Column(Integer, default=5)
     used_month = Column(Integer, default=0)
@@ -26,7 +28,7 @@ class ReceiptUsageQuotaReceiptEn(Base):
 class ReceiptUsageQuotaRequestEn(Base):
     __tablename__ = "receipt_usage_quota_request_en"
     
-    user_id = Column(String, primary_key=True)
+    user_id = Column(UUID(as_uuid=True), primary_key=True)
     email = Column(Text, nullable=False)
     month_limit = Column(Integer, default=5)
     used_month = Column(Integer, default=0)
