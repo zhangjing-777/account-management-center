@@ -13,6 +13,7 @@ from contact_manager.indivicual_router import router as contact_individual_route
 from stripe_manager.paid_router import router as stripe_paid_routers
 from stripe_manager.subscript_router import router as stripe_subscript_routers
 from stripe_manager.webhook_handle_router import router as stripe_webhook_routers
+from account_delete.router import router as delete_account_routers
 
 os.makedirs('logs', exist_ok=True)
 
@@ -63,6 +64,7 @@ app.include_router(stripe_subscript_routers)
 app.include_router(stripe_webhook_routers)
 app.include_router(contact_enterprise_routers)
 app.include_router(contact_individual_routers)
+app.include_router(delete_account_routers)
 
 @app.get("/health")
 async def health_check():
