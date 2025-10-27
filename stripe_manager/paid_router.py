@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/stripe", tags=["stripe paid manager"])
 
 @router.post("/paid-manager")
-async def stripe_paid_process(request, db: AsyncSession = Depends(get_db)):
+async def stripe_paid_process(request: dict, db: AsyncSession = Depends(get_db)):
     """处理 Stripe 支付成功回调，升级用户为 Pro 并增加配额"""
     try:
         subscription_id = (

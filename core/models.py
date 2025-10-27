@@ -13,6 +13,7 @@ class UserLevelEn(Base):
     paypal_subscription_id = Column(Text)
     virtual_box = Column(Text)
     stripe_customer_id = Column(Text)
+    apple_customer_id = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class ReceiptUsageQuotaReceiptEn(Base):

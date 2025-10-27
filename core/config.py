@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     email_salt:str
 
+    apple_shared_secret:str
+
     class Config:
         env_file = ".env"
     
