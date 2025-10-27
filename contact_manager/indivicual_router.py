@@ -6,6 +6,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.dialects.postgresql import insert
 from core.database import get_db
 from core.models import Contact
+from core.utils import generate_email_hash
 from core.encryption import encrypt_data, decrypt_value
 import logging
 
@@ -35,7 +36,7 @@ async def contact_process(body: ContactRequest, db: AsyncSession = Depends(get_d
 
         stmt = insert(Contact).values(
             email=encrypted_data["email"],
-            email_hash=func.encode(func.digest(body.email, 'sha256'), 'hex'),
+            email_hash=generate_email_hash(body.email),
             first_name=encrypted_data["first_name"],
             last_name=encrypted_data["last_name"],
             message=encrypted_data["message"],
@@ -82,7 +83,7 @@ async def get_contact(email: str = Query(..., description="用户邮箱"), db: A
         logger.info(f"Querying contact by email={email}")
 
         stmt = select(Contact).where(
-            Contact.email_hash == func.encode(func.digest(email, 'sha256'), 'hex')
+            Contact.email_hash == generate_email_hash(email)
         )
         
         result = await db.execute(stmt)
@@ -122,7 +123,7 @@ async def delete_contact(
             stmt = delete(Contact).where(Contact.id == id).returning(Contact.id)
         else:
             stmt = delete(Contact).where(
-                Contact.email_hash == func.encode(func.digest(email, 'sha256'), 'hex')
+                Contact.email_hash == generate_email_hash(email)
             ).returning(Contact.id)
 
         result = await db.execute(stmt)

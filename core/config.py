@@ -17,6 +17,8 @@ class Settings(BaseSettings):
 
     encryption_key:str
 
+    email_salt:str
+
     class Config:
         env_file = ".env"
     

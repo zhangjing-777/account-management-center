@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 from sqlalchemy.dialects.postgresql import insert
 from core.database import get_db
+from core.utils import generate_email_hash
 from core.models import EnterpriseContact
 from core.encryption import encrypt_data, decrypt_value
 import logging
@@ -37,7 +38,7 @@ async def enterprise_contact_process(body: EnterpriseContactRequest, db: AsyncSe
 
         stmt = insert(EnterpriseContact).values(
             email=encrypted_data["email"],
-            email_hash=func.encode(func.digest(body.company_email, 'sha256'), 'hex'),
+            email_hash=generate_email_hash(body.company_email),
             company_name=encrypted_data["company_name"],
             industry=encrypted_data["industry"],
             number_employees=body.number_employees,
@@ -88,7 +89,7 @@ async def get_enterprise_contact(email: str = Query(..., description="企业邮�
         logger.info(f"Querying enterprise_contact by email={email}")
 
         stmt = select(EnterpriseContact).where(
-            EnterpriseContact.email_hash == func.encode(func.digest(email, 'sha256'), 'hex')
+            EnterpriseContact.email_hash == generate_email_hash(email)
         )
         
         result = await db.execute(stmt)
@@ -129,7 +130,7 @@ async def delete_enterprise_contact(
             stmt = delete(EnterpriseContact).where(EnterpriseContact.id == id).returning(EnterpriseContact.id)
         else:
             stmt = delete(EnterpriseContact).where(
-                EnterpriseContact.email_hash == func.encode(func.digest(email, 'sha256'), 'hex')
+                EnterpriseContact.email_hash == generate_email_hash(email)
             ).returning(EnterpriseContact.id)
 
         result = await db.execute(stmt)

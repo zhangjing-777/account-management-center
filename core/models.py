@@ -8,6 +8,7 @@ class UserLevelEn(Base):
     
     user_id = Column(UUID(as_uuid=True), primary_key=True)
     email = Column(Text, nullable=False)
+    email_hash = Column(String, unique=True, nullable=False)
     subscription_status = Column(Text)
     paypal_subscription_id = Column(Text)
     virtual_box = Column(Text)
@@ -19,6 +20,7 @@ class ReceiptUsageQuotaReceiptEn(Base):
     
     user_id = Column(UUID(as_uuid=True), primary_key=True)
     email = Column(Text, nullable=False)
+    email_hash = Column(String, unique=True, nullable=False)
     month_limit = Column(Integer, default=5)
     used_month = Column(Integer, default=0)
     last_reset_date = Column(Date)
@@ -30,6 +32,7 @@ class ReceiptUsageQuotaRequestEn(Base):
     
     user_id = Column(UUID(as_uuid=True), primary_key=True)
     email = Column(Text, nullable=False)
+    email_hash = Column(String, unique=True, nullable=False)
     month_limit = Column(Integer, default=5)
     used_month = Column(Integer, default=0)
     last_reset_date = Column(Date)

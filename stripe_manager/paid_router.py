@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update
+from core.utils import generate_email_hash
 from core.database import get_db
 from core.models import UserLevelEn, ReceiptUsageQuotaReceiptEn, ReceiptUsageQuotaRequestEn
 import logging
@@ -10,27 +10,40 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/stripe", tags=["stripe paid manager"])
 
-class StripeWebhookBody(BaseModel):
-    user_id: str
-    id: str
-
 @router.post("/paid-manager")
-async def stripe_paid_process(body: StripeWebhookBody, db: AsyncSession = Depends(get_db)):
+async def stripe_paid_process(request, db: AsyncSession = Depends(get_db)):
     """处理 Stripe 支付成功回调，升级用户为 Pro 并增加配额"""
     try:
-        logger.info(f"Stripe webhook received: user_id={body.user_id}, stripe_id={body.id}")
+        subscription_id = (
+            request.get("data", {})
+            .get("object", {})
+            .get("lines", {})
+            .get("data", [{}])[0]
+            .get("parent", {})
+            .get("subscription_item_details", {})
+            .get("subscription")
+        )
+        customer_email = (
+            request.get("data", {})
+            .get("object", {})
+            .get("customer_email")
+        )
+        
+        logger.info(f"Stripe webhook received: customer_email={customer_email}, stripe_id={subscription_id}")
+
+        email_hash = generate_email_hash(customer_email)
 
         stmt1 = (
             update(UserLevelEn)
-            .where(UserLevelEn.user_id == body.user_id)
-            .values(subscription_status='Pro', stripe_customer_id=body.id)
+            .where(UserLevelEn.email_hash == email_hash)
+            .values(subscription_status='Pro', stripe_customer_id=subscription_id)
         )
         result1 = await db.execute(stmt1)
         logger.info(f"user_level_en updated: {result1.rowcount} rows")
 
         stmt2 = (
             update(ReceiptUsageQuotaRequestEn)
-            .where(ReceiptUsageQuotaRequestEn.user_id == body.user_id)
+            .where(ReceiptUsageQuotaRequestEn.email_hash == email_hash)
             .values(month_limit=100)
         )
         result2 = await db.execute(stmt2)
@@ -38,7 +51,7 @@ async def stripe_paid_process(body: StripeWebhookBody, db: AsyncSession = Depend
 
         stmt3 = (
             update(ReceiptUsageQuotaReceiptEn)
-            .where(ReceiptUsageQuotaReceiptEn.user_id == body.user_id)
+            .where(ReceiptUsageQuotaReceiptEn.email_hash == email_hash)
             .values(month_limit=100)
         )
         result3 = await db.execute(stmt3)
@@ -49,8 +62,8 @@ async def stripe_paid_process(body: StripeWebhookBody, db: AsyncSession = Depend
 
         return {
             "message": "Stripe payment processed, user upgraded to Pro",
-            "user_id": body.user_id,
-            "stripe_customer_id": body.id,
+            "customer_email": customer_email,
+            "stripe_customer_id": subscription_id,
             "updates": {
                 "user_level_en": result1,
                 "receipt_usage_quota_request_en": result2,

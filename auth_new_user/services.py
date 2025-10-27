@@ -4,6 +4,7 @@ from sqlalchemy import text
 import logging
 from core.encryption import encrypt_value
 from core.database import AsyncSessionLocal
+from core.utils import generate_email_hash
 from core.models import UserLevelEn, ReceiptUsageQuotaReceiptEn, ReceiptUsageQuotaRequestEn
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ async def do_sync_new_users():
                     UserLevelEn(
                         user_id=user_id,
                         email=encrypted_email,
+                        email_hash=generate_email_hash(email_plain),
                         subscription_status="free",
                         virtual_box=f"{user_id}@inbox.receiptdrop.dev"
                     )
@@ -64,6 +66,7 @@ async def do_sync_new_users():
                     ReceiptUsageQuotaReceiptEn(
                         user_id=user_id,
                         email=encrypted_email,
+                        email_hash=generate_email_hash(email_plain),
                         used_month=0,
                         month_limit=5
                     )
@@ -73,6 +76,7 @@ async def do_sync_new_users():
                     ReceiptUsageQuotaRequestEn(
                         user_id=user_id,
                         email=encrypted_email,
+                        email_hash=generate_email_hash(email_plain),
                         used_month=0,
                         month_limit=5
                     )
