@@ -17,11 +17,7 @@ async def stripe_paid_process(request: dict, db: AsyncSession = Depends(get_db))
         subscription_id = (
             request.get("data", {})
             .get("object", {})
-            .get("lines", {})
-            .get("data", [{}])[0]
-            .get("parent", {})
-            .get("subscription_item_details", {})
-            .get("subscription")
+            .get("customer")
         )
         customer_email = (
             request.get("data", {})
