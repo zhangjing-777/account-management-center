@@ -26,7 +26,7 @@ async def update_user_subscription(db: AsyncSession, level: str, stripe_customer
 
     result1 = await db.execute(stmt1)
     user_id = result1.scalar_one_or_none()
-    logger.info(f"user_level_en updated: {result1.rowcount} rows, user_id={user_id}")
+    logger.info(f"user_level_en updated: user_id={user_id}")
     
     # 2. 更新 receipt_usage_quota_request_en 表
     request_limit = 100 if level == "pro" else 0
@@ -36,7 +36,7 @@ async def update_user_subscription(db: AsyncSession, level: str, stripe_customer
         .values(month_limit=request_limit)
     )
     result2 = await db.execute(stmt2)
-    logger.info(f"receipt_usage_quota_request_en updated: {result2.rowcount} rows")
+    logger.info(f"receipt_usage_quota_request_en updated: user_id={user_id}")
     
     # 3. 更新 receipt_usage_quota_receipt_en 表
     stmt3 = (
@@ -45,7 +45,7 @@ async def update_user_subscription(db: AsyncSession, level: str, stripe_customer
         .values(month_limit=request_limit)
     )
     result3 = await db.execute(stmt3)
-    logger.info(f"receipt_usage_quota_receipt_en updated: {result3.rowcount} rows")
+    logger.info(f"receipt_usage_quota_receipt_en updated: user_id={user_id}")
 
     await db.commit()
     logger.info(f"Subscription update for user_id={user_id} completed.")
