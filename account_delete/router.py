@@ -35,7 +35,10 @@ TABLES_CLEAN_4UID = [
             "receipt_items_en",
             "imported_emails",
             "gmail_confirm_link_en",
-            "canonical_entities"
+            "canonical_entities",
+            "referral_codes",
+            "user_credits",
+            "credit_transactions"
         ]
 
 TABLES_CLEAN_4EMAIL = [

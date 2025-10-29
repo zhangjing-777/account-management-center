@@ -4,6 +4,7 @@ from sqlalchemy import update
 from core.utils import generate_email_hash
 from core.database import get_db
 from core.models import UserLevelEn, ReceiptUsageQuotaReceiptEn, ReceiptUsageQuotaRequestEn
+from stripe_manager.referral_manager.reward_service import process_referral_reward
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,77 +12,43 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/stripe", tags=["stripe paid manager"])
 
 
-async def upgrade_user_to_pro(
-    email_hash: str,
-    stripe_customer_id: str,
-    db: AsyncSession
-) -> dict:
-    """升级用户为 Pro 并增加配额"""
+async def update_user_subscription(db: AsyncSession, email_hash: str, level: str, stripe_customer_id: str):
+    logging.info(f"Updating subscription for email_hash={email_hash} to level={level}")
+    
+    # 1. 更新 user_level_en 表
     stmt1 = (
         update(UserLevelEn)
         .where(UserLevelEn.email_hash == email_hash)
-        .values(subscription_status='Pro', stripe_customer_id=stripe_customer_id)
+        .values(subscription_status=level, stripe_customer_id=stripe_customer_id)
+        .returning(UserLevelEn.user_id)
     )
     result1 = await db.execute(stmt1)
-    logger.info(f"user_level_en updated to Pro: {result1.rowcount} rows")
-
+    user_id = result1.scalar_one_or_none()
+    logger.info(f"user_level_en updated: {result1.rowcount} rows, user_id={user_id}")
+    
+    # 2. 更新 receipt_usage_quota_request_en 表
+    request_limit = 100 if level == "pro" else 0
     stmt2 = (
         update(ReceiptUsageQuotaRequestEn)
         .where(ReceiptUsageQuotaRequestEn.email_hash == email_hash)
-        .values(month_limit=100)
+        .values(month_limit=request_limit)
     )
     result2 = await db.execute(stmt2)
-    logger.info(f"receipt_usage_quota_request_en updated to 100: {result2.rowcount} rows")
-
+    logger.info(f"receipt_usage_quota_request_en updated: {result2.rowcount} rows")
+    
+    # 3. 更新 receipt_usage_quota_receipt_en 表
     stmt3 = (
         update(ReceiptUsageQuotaReceiptEn)
         .where(ReceiptUsageQuotaReceiptEn.email_hash == email_hash)
-        .values(month_limit=100)
+        .values(month_limit=request_limit)
     )
     result3 = await db.execute(stmt3)
-    logger.info(f"receipt_usage_quota_receipt_en updated to 100: {result3.rowcount} rows")
+    logger.info(f"receipt_usage_quota_receipt_en updated: {result3.rowcount} rows")
 
-    return {
-        "user_level_en": result1.rowcount,
-        "receipt_usage_quota_request_en": result2.rowcount,
-        "receipt_usage_quota_receipt_en": result3.rowcount
-    }
-
-
-async def downgrade_user_to_free(
-    email_hash: str,
-    db: AsyncSession
-) -> dict:
-    """降级用户为 Free 并减少配额"""
-    stmt1 = (
-        update(UserLevelEn)
-        .where(UserLevelEn.email_hash == email_hash)
-        .values(subscription_status='Free')
-    )
-    result1 = await db.execute(stmt1)
-    logger.info(f"user_level_en updated to Free: {result1.rowcount} rows")
-
-    stmt2 = (
-        update(ReceiptUsageQuotaRequestEn)
-        .where(ReceiptUsageQuotaRequestEn.email_hash == email_hash)
-        .values(month_limit=0)
-    )
-    result2 = await db.execute(stmt2)
-    logger.info(f"receipt_usage_quota_request_en updated to 5: {result2.rowcount} rows")
-
-    stmt3 = (
-        update(ReceiptUsageQuotaReceiptEn)
-        .where(ReceiptUsageQuotaReceiptEn.email_hash == email_hash)
-        .values(month_limit=0)
-    )
-    result3 = await db.execute(stmt3)
-    logger.info(f"receipt_usage_quota_receipt_en updated to 5: {result3.rowcount} rows")
-
-    return {
-        "user_level_en": result1.rowcount,
-        "receipt_usage_quota_request_en": result2.rowcount,
-        "receipt_usage_quota_receipt_en": result3.rowcount
-    }
+    await db.commit()
+    logger.info(f"Subscription update for email_hash={email_hash} completed.")
+    
+    return user_id
 
 
 @router.post("/paid-manager")
@@ -104,14 +71,31 @@ async def stripe_paid_process(request: dict, db: AsyncSession = Depends(get_db))
 
         # 根据事件类型处理
         if event_type == "invoice.payment_succeeded":
-            # 订阅成功或更新
-            updates = await upgrade_user_to_pro(email_hash, stripe_customer_id, db)
+            # 订阅成功
+            user_id = await update_user_subscription(db, email_hash, "pro", stripe_customer_id)
             message = "User upgraded to Pro"
             status = "Pro"
-            
+
+            # 触发推荐返利
+            try:
+                reward_result = await process_referral_reward(
+                    db=db,
+                    referee_user_id=user_id,
+                    stripe_customer_id=stripe_customer_id
+                )
+                
+                if reward_result.get("processed"):
+                    logger.info(f"Referral reward processed: {reward_result}")
+                else:
+                    logger.info(f"Referral reward not processed: {reward_result.get('reason')}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to process referral reward: {e}")
+                # 不阻断主流程，继续执行
+                
         elif event_type == "customer.subscription.deleted":
             # 订阅取消
-            updates = await downgrade_user_to_free(email_hash, db)
+            user_id = await update_user_subscription(db, email_hash, "free", stripe_customer_id)
             message = "User downgraded to Free"
             status = "Free"
             
@@ -123,7 +107,6 @@ async def stripe_paid_process(request: dict, db: AsyncSession = Depends(get_db))
                 "status": "ignored"
             }
 
-        await db.commit()
         logger.info(f"All updates committed successfully for event: {event_type}")
 
         return {
@@ -131,7 +114,7 @@ async def stripe_paid_process(request: dict, db: AsyncSession = Depends(get_db))
             "customer_email": customer_email,
             "stripe_customer_id": stripe_customer_id,
             "subscription_status": status,
-            "updates": updates,
+            "updates": user_id,
             "status": "success"
         }
 

@@ -12,10 +12,12 @@ from contact_manager.enterprise_router import router as contact_enterprise_route
 from contact_manager.indivicual_router import router as contact_individual_routers
 from stripe_manager.paid_router import router as stripe_paid_routers
 from stripe_manager.subscript_router import router as stripe_subscript_routers
-from stripe_manager.webhook_handle_router import router as stripe_webhook_routers
 from account_delete.router import router as delete_account_routers
 from iap_manager.verify_receipt_router import router as verify_receipt_routers
 from iap_manager.notification_router import router as notification_routers
+from stripe_manager.referral_manager.code_router import router as code_routers
+from stripe_manager.referral_manager.binding_router import router as binding_routers
+from stripe_manager.referral_manager.credit_router import router as credit_routers
 
 os.makedirs('logs', exist_ok=True)
 
@@ -61,14 +63,20 @@ app.add_middleware(
 
 app.include_router(account_check_routers)
 app.include_router(auth_new_user_routers)
+
 app.include_router(stripe_paid_routers)
 app.include_router(stripe_subscript_routers)
-app.include_router(stripe_webhook_routers)
-app.include_router(contact_enterprise_routers)
-app.include_router(contact_individual_routers)
-app.include_router(delete_account_routers)
+app.include_router(code_routers)
+app.include_router(binding_routers)
+app.include_router(credit_routers)
+
 app.include_router(verify_receipt_routers)
 app.include_router(notification_routers)
+
+app.include_router(contact_enterprise_routers)
+app.include_router(contact_individual_routers)
+
+app.include_router(delete_account_routers)
 
 @app.get("/health")
 async def health_check():
