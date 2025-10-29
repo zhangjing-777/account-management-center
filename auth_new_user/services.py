@@ -68,7 +68,8 @@ async def do_sync_new_users():
                         email=encrypted_email,
                         email_hash=generate_email_hash(email_plain),
                         used_month=0,
-                        month_limit=5
+                        month_limit=0,
+                        raw_limit=50
                     )
                 )
                 
@@ -78,7 +79,8 @@ async def do_sync_new_users():
                         email=encrypted_email,
                         email_hash=generate_email_hash(email_plain),
                         used_month=0,
-                        month_limit=5
+                        month_limit=0,
+                        raw_limit=50
                     )
                 )
 

@@ -24,7 +24,9 @@ async def account_check(request: AccountCheckRequest, db: AsyncSession = Depends
                 func.coalesce(ReceiptUsageQuotaReceiptEn.used_month, 0).label("usage_quota_receipt"),
                 func.coalesce(ReceiptUsageQuotaRequestEn.used_month, 0).label("usage_quota_request"),
                 func.coalesce(ReceiptUsageQuotaReceiptEn.month_limit, 0).label("receipt_month_limit"),
-                func.coalesce(ReceiptUsageQuotaRequestEn.month_limit, 0).label("request_month_limit")
+                func.coalesce(ReceiptUsageQuotaRequestEn.month_limit, 0).label("request_month_limit"),
+                func.coalesce(ReceiptUsageQuotaReceiptEn.raw_limit, 0).label("receipt_raw_limit"),
+                func.coalesce(ReceiptUsageQuotaRequestEn.raw_limit, 0).label("request_raw_limit")
             )
             .outerjoin(ReceiptUsageQuotaReceiptEn, UserLevelEn.user_id == ReceiptUsageQuotaReceiptEn.user_id)
             .outerjoin(ReceiptUsageQuotaRequestEn, UserLevelEn.user_id == ReceiptUsageQuotaRequestEn.user_id)
@@ -43,15 +45,15 @@ async def account_check(request: AccountCheckRequest, db: AsyncSession = Depends
             "virtual_box": record.virtual_box,
             "receipt_quota": {
                 "used": record.usage_quota_receipt,
-                "limit": record.receipt_month_limit,
-                "remaining": max(0, record.receipt_month_limit - record.usage_quota_receipt),
-                "utilization_percentage": round(record.usage_quota_receipt / record.receipt_month_limit, 2) if record.receipt_month_limit > 0 else 0
+                "limit": record.receipt_month_limit + record.receipt_raw_limit,
+                "remaining": max(0, record.receipt_month_limit + record.receipt_raw_limit - record.usage_quota_receipt),
+                "utilization_percentage": round(record.usage_quota_receipt / (record.receipt_month_limit+ record.receipt_raw_limit), 2) if (record.receipt_month_limit+ record.receipt_raw_limit) > 0 else 0
             },
             "request_quota": {
                 "used": record.usage_quota_request,
-                "limit": record.request_month_limit,
-                "remaining": max(0, record.request_month_limit - record.usage_quota_request),
-                "utilization_percentage": round(record.usage_quota_request / record.request_month_limit, 2) if record.request_month_limit > 0 else 0
+                "limit": record.request_month_limit+record.request_raw_limit,
+                "remaining": max(0, record.request_month_limit+record.request_raw_limit - record.usage_quota_request),
+                "utilization_percentage": round(record.usage_quota_request / (record.request_month_limit+record.request_raw_limit), 2) if (record.request_month_limit+record.request_raw_limit) > 0 else 0
             }
         }
 
