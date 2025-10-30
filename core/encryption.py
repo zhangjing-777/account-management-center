@@ -46,6 +46,14 @@ def decrypt_value(encrypted_value):
 
 def encrypt_data(table_name, data_dict):
     """对指定表的敏感字段进行加密"""
+    if not data_dict:
+        logger.warning(f"encrypt_data called with empty or None data for table {table_name}")
+        return data_dict
+
+    if not isinstance(data_dict, dict):
+        logger.error(f"encrypt_data expected dict but got {type(data_dict)} for table {table_name}")
+        return data_dict
+    
     if table_name not in SENSITIVE_FIELDS:
         return data_dict
     
@@ -61,6 +69,14 @@ def encrypt_data(table_name, data_dict):
 
 def decrypt_data(table_name, data_dict):
     """对指定表的敏感字段进行解密"""
+    if not data_dict:
+        logger.warning(f"encrypt_data called with empty or None data for table {table_name}")
+        return data_dict
+
+    if not isinstance(data_dict, dict):
+        logger.error(f"encrypt_data expected dict but got {type(data_dict)} for table {table_name}")
+        return data_dict
+    
     if table_name not in SENSITIVE_FIELDS:
         return data_dict
     
