@@ -22,14 +22,10 @@ async def account_check(request: AccountCheckRequest, db: AsyncSession = Depends
                 UserLevelEn.subscription_status,
                 UserLevelEn.virtual_box,
                 func.coalesce(ReceiptUsageQuotaReceiptEn.used_month, 0).label("usage_quota_receipt"),
-                func.coalesce(ReceiptUsageQuotaRequestEn.used_month, 0).label("usage_quota_request"),
                 func.coalesce(ReceiptUsageQuotaReceiptEn.month_limit, 0).label("receipt_month_limit"),
-                func.coalesce(ReceiptUsageQuotaRequestEn.month_limit, 0).label("request_month_limit"),
-                func.coalesce(ReceiptUsageQuotaReceiptEn.raw_limit, 0).label("receipt_raw_limit"),
-                func.coalesce(ReceiptUsageQuotaRequestEn.raw_limit, 0).label("request_raw_limit")
+                func.coalesce(ReceiptUsageQuotaReceiptEn.raw_limit, 0).label("receipt_raw_limit")
             )
             .outerjoin(ReceiptUsageQuotaReceiptEn, UserLevelEn.user_id == ReceiptUsageQuotaReceiptEn.user_id)
-            .outerjoin(ReceiptUsageQuotaRequestEn, UserLevelEn.user_id == ReceiptUsageQuotaRequestEn.user_id)
             .where(UserLevelEn.user_id == request.user_id)
         )
         
@@ -49,12 +45,6 @@ async def account_check(request: AccountCheckRequest, db: AsyncSession = Depends
                 "raw_used": 50 - record.receipt_raw_limit,
                 "raw_limit":50
                 
-            },
-            "request_quota": {
-                "month_used": record.usage_quota_request,
-                "month_limit": record.request_month_limit,
-                "raw_used": 50 - record.request_raw_limit,
-                "raw_limit": 50
             }
         }
 
