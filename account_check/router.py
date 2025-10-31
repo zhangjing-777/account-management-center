@@ -44,16 +44,17 @@ async def account_check(request: AccountCheckRequest, db: AsyncSession = Depends
             "subscription_status": record.subscription_status,
             "virtual_box": record.virtual_box,
             "receipt_quota": {
-                "used": record.usage_quota_receipt,
-                "limit": record.receipt_month_limit + record.receipt_raw_limit,
-                "remaining": max(0, record.receipt_month_limit + record.receipt_raw_limit - record.usage_quota_receipt),
-                "utilization_percentage": round(record.usage_quota_receipt / (record.receipt_month_limit+ record.receipt_raw_limit), 2) if (record.receipt_month_limit+ record.receipt_raw_limit) > 0 else 0
+                "month_used": record.usage_quota_receipt,
+                "month_limit": record.receipt_month_limit,
+                "raw_used": 50 - record.receipt_raw_limit,
+                "raw_limit":50
+                
             },
             "request_quota": {
-                "used": record.usage_quota_request,
-                "limit": record.request_month_limit+record.request_raw_limit,
-                "remaining": max(0, record.request_month_limit+record.request_raw_limit - record.usage_quota_request),
-                "utilization_percentage": round(record.usage_quota_request / (record.request_month_limit+record.request_raw_limit), 2) if (record.request_month_limit+record.request_raw_limit) > 0 else 0
+                "month_used": record.usage_quota_request,
+                "month_limit": record.request_month_limit,
+                "raw_used": 50 - record.request_raw_limit,
+                "raw_limit": 50
             }
         }
 
