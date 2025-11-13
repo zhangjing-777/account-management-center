@@ -18,13 +18,14 @@ async def do_sync_new_users():
                 SELECT u.id, u.email
                 FROM auth.users u
                 LEFT JOIN public.user_level_en ul ON ul.user_id = u.id
-                WHERE ul.user_id IS NULL;
+                WHERE ul.user_id IS NULL
+                    and u.email IS NOT Null;
             """)
             
             result = await db.execute(query)
             rows = result.fetchall()
             
-            logger.info(f"Found {len(rows)} new users to sync")
+            logger.info(f"Found {len(rows)} new users to sync:{rows}")
 
             if not rows:
                 logger.info("No new users found. Sync finished.")
