@@ -27,16 +27,24 @@ async def update_user_subscription(db: AsyncSession, level: str, stripe_customer
     result1 = await db.execute(stmt1)
     user_id = result1.scalar_one_or_none()
     logger.info(f"user_level_en updated: user_id={user_id}")
-    
+
+    # 根据订阅等级设置每月额度
+    request_limit = {
+        "pro": 100,
+        "team": 1000,
+    }.get(level, 0)
+
     # 2. 更新 receipt_usage_quota_request_en 表
-    request_limit = 100 if level == "pro" else 0
     stmt2 = (
         update(ReceiptUsageQuotaRequestEn)
         .where(ReceiptUsageQuotaRequestEn.user_id == user_id)
         .values(month_limit=request_limit)
     )
     result2 = await db.execute(stmt2)
-    logger.info(f"receipt_usage_quota_request_en updated: user_id={user_id}")
+    logger.info(
+        f"receipt_usage_quota_request_en updated: "
+        f"user_id={user_id}, month_limit={request_limit}"
+    )
     
     # 3. 更新 receipt_usage_quota_receipt_en 表
     stmt3 = (
@@ -45,7 +53,10 @@ async def update_user_subscription(db: AsyncSession, level: str, stripe_customer
         .values(month_limit=request_limit)
     )
     result3 = await db.execute(stmt3)
-    logger.info(f"receipt_usage_quota_receipt_en updated: user_id={user_id}")
+    logger.info(
+        f"receipt_usage_quota_receipt_en updated: "
+        f"user_id={user_id}, month_limit={request_limit}"
+    )
 
     await db.commit()
     logger.info(f"Subscription update for user_id={user_id} completed.")
@@ -59,6 +70,7 @@ async def stripe_paid_process(request: dict, db: AsyncSession = Depends(get_db))
     try:
         logger.info(f"The input request is {request}")
         event_type = request.get("type", "")
+        logger.info(f"The event_type is {event_type}")
         data_object = request.get("data", {}).get("object", {})       
         stripe_customer_id = data_object.get("customer")
 
@@ -70,9 +82,17 @@ async def stripe_paid_process(request: dict, db: AsyncSession = Depends(get_db))
                 raise HTTPException(status_code=400, detail="customer_email is missing")
             email_hash = generate_email_hash(customer_email)
 
-            user_id = await update_user_subscription(db, "pro", stripe_customer_id, email_hash)
-            message = "User upgraded to Pro"
-            status = "Pro"
+            description = (
+                    data_object.get("lines", {})
+                    .get("data", [{}])[0]
+                    .get("description")
+                    ).casefold()
+
+            level = "team" if "team" in description else "pro" if "pro" in description else "free"
+            logger.info(f"the paid level is {level}.")
+            user_id = await update_user_subscription(db, level, stripe_customer_id, email_hash)
+            message = f"User upgraded to {level}"
+            status = level
 
             # 触发推荐返利
             try:
