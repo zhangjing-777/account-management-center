@@ -5,7 +5,7 @@ import logging
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from core.database import get_db
 from core.models import UserLevelEn, ReceiptUsageQuotaReceiptEn, ReceiptUsageQuotaRequestEn
 
@@ -21,6 +21,7 @@ class AppleNotificationPayload(BaseModel):
 
 @router.post("/notification")
 async def apple_webhook(
+    request: Request,
     payload: AppleNotificationPayload,
     db: AsyncSession = Depends(get_db)
 ):
@@ -33,6 +34,12 @@ async def apple_webhook(
     - EXPIRED: 订阅过期
     - REFUND: 退款
     """
+    logger.info(
+        f"[IAP webhook] HIT ip={request.client.host if request.client else 'unknown'} "
+        f"xff={request.headers.get('x-forwarded-for')} "
+        f"payload_len={len(payload.signedPayload)}"
+    )
+
     try:
         # Step 1: 解码 Apple 的 JWS (JSON Web Signature)
         decoded_payload = decode_apple_jws(payload.signedPayload)
