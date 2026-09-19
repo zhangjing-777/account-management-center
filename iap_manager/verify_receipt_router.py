@@ -32,11 +32,19 @@ async def verify_receipt(
     2. 恢复购买 - 自动找回绑定
     3. 续费校验 - 验证当前状态
     """
+    logger.info(f"[IAP verify] HIT user_id={request.user_id} receipt_len={len(request.receipt)}")
+
     try:
         # Step 1: 向 Apple 验证收据
         apple_response = await verify_with_apple(request.receipt)
-        
+        logger.info(
+            f"[IAP verify] apple status={apple_response.get('status')} "
+            f"env={apple_response.get('environment')} "
+            f"has_latest_receipt_info={bool(apple_response.get('latest_receipt_info'))}"
+        )
+
         if apple_response.get("status") != 0:
+            logger.warning(f"[IAP verify] Apple rejected receipt: status={apple_response.get('status')}")
             raise HTTPException(
                 status_code=400,
                 detail=f"Apple receipt verification failed: {apple_response.get('status')}"
