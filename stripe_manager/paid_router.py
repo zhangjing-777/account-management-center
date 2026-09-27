@@ -3,11 +3,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update
 from core.utils import generate_email_hash
 from core.database import get_db
+
+import stripe
+from core.config import settings
+from stripe_manager.annual_manager.code_service import generate_annual_code
+from stripe_manager.credit_pack_manager.credit_service import fulfill_credit_pack
+
 from core.models import UserLevelEn, ReceiptUsageQuotaReceiptEn, ReceiptUsageQuotaRequestEn
 from stripe_manager.referral_manager.reward_service import process_referral_reward
 import logging
 
 logger = logging.getLogger(__name__)
+
+stripe.api_key = settings.stripe_api_key  # 需要查line items,所以这个文件也要初始化一下
 
 router = APIRouter(prefix="/stripe", tags=["stripe paid manager"])
 
@@ -116,7 +124,46 @@ async def stripe_paid_process(request: dict, db: AsyncSession = Depends(get_db))
             user_id = await update_user_subscription(db, "free", stripe_customer_id)
             message = "User downgraded to Free"
             status = "Free"
-            
+
+        elif event_type == "checkout.session.completed":
+            # one-off支付（年度包 / 流量包）走这里，与订阅相关的 invoice.payment_succeeded 互不影响
+            session_id = data_object.get("id")
+            client_reference_id = data_object.get("client_reference_id")
+            customer_email = (
+                data_object.get("customer_details", {}).get("email")
+                or data_object.get("customer_email")
+            )
+
+            # checkout.session.completed 默认不带 line items，需要单独查price_id
+            line_items = stripe.checkout.Session.list_line_items(session_id, limit=1)
+            price_id = line_items.data[0].price.id if line_items.data else None
+
+            product_info = settings.stripe_price_map.get(price_id)
+            if not product_info:
+                logger.warning(f"Unknown price_id in checkout.session.completed: {price_id}")
+                return {"message": "Unknown price_id", "status": "ignored"}
+
+            if product_info["type"] == "annual":
+                if not customer_email:
+                    raise HTTPException(status_code=400, detail="customer email is missing")
+                purchaser_email_hash = generate_email_hash(customer_email)
+                code = await generate_annual_code(
+                    db, session_id, product_info["plan"], purchaser_email_hash, client_reference_id
+                )
+                return {
+                    "message": "Annual code generated",
+                    "plan": product_info["plan"],
+                    "code": code,
+                    "status": "success",
+                }
+
+            elif product_info["type"] == "credit_pack":
+                if not client_reference_id:
+                    logger.error(f"Credit pack purchase without client_reference_id, session={session_id}")
+                    return {"message": "Missing client_reference_id, cannot fulfill credit pack", "status": "error"}
+                await fulfill_credit_pack(db, session_id, client_reference_id, product_info["credits"])
+                return {"message": "Credit pack fulfilled", "status": "success"}
+               
         else:
             logger.warning(f"Unhandled event type: {event_type}")
             return {

@@ -18,6 +18,8 @@ from iap_manager.notification_router import router as notification_routers
 from stripe_manager.referral_manager.code_router import router as code_routers
 from stripe_manager.referral_manager.binding_router import router as binding_routers
 from stripe_manager.referral_manager.credit_router import router as credit_routers
+from stripe_manager.annual_manager.code_router import router as annual_code_routers
+
 
 os.makedirs('logs', exist_ok=True)
 
@@ -66,6 +68,7 @@ app.include_router(auth_new_user_routers)
 
 app.include_router(stripe_paid_routers)
 app.include_router(stripe_subscript_routers)
+app.include_router(annual_code_routers)
 app.include_router(code_routers)
 app.include_router(binding_routers)
 app.include_router(credit_routers)
@@ -77,6 +80,8 @@ app.include_router(contact_enterprise_routers)
 app.include_router(contact_individual_routers)
 
 app.include_router(delete_account_routers)
+
+
 
 @app.get("/health")
 async def health_check():

@@ -28,6 +28,8 @@ class ReceiptUsageQuotaReceiptEn(Base):
     last_reset_date = Column(Date)
     remark = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    annual_limit = Column(Integer, default=0)
+    used_annual = Column(Integer, default=0)
 
 class ReceiptUsageQuotaRequestEn(Base):
     __tablename__ = "receipt_usage_quota_request_en"
@@ -41,6 +43,8 @@ class ReceiptUsageQuotaRequestEn(Base):
     last_reset_date = Column(Date)
     remark = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    annual_limit = Column(Integer, default=0)
+    used_annual = Column(Integer, default=0)
 
 class Contact(Base):
     __tablename__ = "contact"
@@ -119,4 +123,46 @@ class CreditTransaction(Base):
     balance_after = Column(Numeric(10, 2))  # 交易后余额
     description = Column(String(255))  # 描述
     reference_id = Column(String)  # 关联ID（如referral_record_id或stripe_invoice_id）
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AnnualRedeemCode(Base):
+    """年度激活码：购买凭证 + 兑换凭证"""
+    __tablename__ = "annual_redeem_codes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), unique=True, nullable=False, index=True) # 激活码
+    plan = Column(String(10), nullable=False)  # pro / team
+    stripe_checkout_session_id = Column(Text, unique=True, nullable=False) # webhook幂等
+    purchaser_email_hash = Column(Text) # 购买人（一定有）
+    purchaser_user_id = Column(UUID(as_uuid=True)) # 购买人（登录购买时才有）
+    status = Column(String(10), nullable=False, default="unused")  # unused / used
+    redeemed_by_user_id = Column(UUID(as_uuid=True)) # 实际使用人
+    redeemed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserAnnualSubscription(Base):
+    """用户年度订阅：排队续期状态机"""
+    __tablename__ = "user_annual_subscriptions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    plan = Column(String(10), nullable=False) #pro / team
+    source_code = Column(String(10)) #关联激活码
+    redeemed_at = Column(DateTime(timezone=True)) #兑换动作发生时间
+    starts_at = Column(DateTime(timezone=True), nullable=False) #该周期实际生效时间
+    expires_at = Column(DateTime(timezone=True), nullable=False) #starts_at + 365天
+    status = Column(String(10), nullable=False, default="queued")  # queued / active / expired
+
+
+class CreditPackPurchase(Base):
+    """流量包购买审计（幂等用，不参与业务判断）"""
+    __tablename__ = "credit_pack_purchases"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stripe_checkout_session_id = Column(Text, unique=True, nullable=False) #唯一，防重复入账
+    user_id = Column(UUID(as_uuid=True), nullable=False)
+    pack_size = Column(Integer, nullable=False) #10/30/50
+    credits_added = Column(Integer, nullable=False) #同pack_size，冗余存一下方便对账
     created_at = Column(DateTime(timezone=True), server_default=func.now())
