@@ -5,9 +5,11 @@ import logging
 from core.encryption import encrypt_value
 from core.database import AsyncSessionLocal
 from core.utils import generate_email_hash
-from core.models import UserLevelEn, ReceiptUsageQuotaReceiptEn, ReceiptUsageQuotaRequestEn
+from core.models import UserLevelEn, ReceiptUsageQuotaReceiptEn, ReceiptUsageQuotaRequestEn, AivoiceBalance
 
 logger = logging.getLogger(__name__)
+
+NEW_USER_VOICE_SECONDS = 50 * 60  # 新用户注册送 50 分钟语音（永久，同 raw_limit=50）
 
 async def do_sync_new_users():
     async with AsyncSessionLocal() as db:
@@ -42,6 +44,7 @@ async def do_sync_new_users():
             user_level_objects = []
             receipt_objects = []
             request_objects = []
+            voice_objects = []
 
             for row in rows:
                 user_id = row.id
@@ -85,6 +88,13 @@ async def do_sync_new_users():
                     )
                 )
 
+                voice_objects.append(
+                    AivoiceBalance(
+                        user_id=user_id,
+                        pack_seconds=NEW_USER_VOICE_SECONDS
+                    )
+                )
+
             if user_level_objects:
                 db.add_all(user_level_objects)
                 logger.info(f"Added {len(user_level_objects)} records to user_level_en")
@@ -97,6 +107,10 @@ async def do_sync_new_users():
                 db.add_all(request_objects)
                 logger.info(f"Added {len(request_objects)} records to receipt_usage_quota_request_en")
 
+            if voice_objects:
+                db.add_all(voice_objects)
+                logger.info(f"Added {len(voice_objects)} records to aivoice_balance")
+
             await db.commit()
             logger.info("All records committed successfully")
 
@@ -105,7 +119,8 @@ async def do_sync_new_users():
                 "inserted": {
                     "user_level_en": len(user_level_objects),
                     "receipt_usage_quota_receipt_en": len(receipt_objects),
-                    "receipt_usage_quota_request_en": len(request_objects)
+                    "receipt_usage_quota_request_en": len(request_objects),
+                    "aivoice_balance": len(voice_objects)
                 },
                 "status": "success"
             }

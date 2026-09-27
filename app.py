@@ -19,7 +19,8 @@ from stripe_manager.referral_manager.code_router import router as code_routers
 from stripe_manager.referral_manager.binding_router import router as binding_routers
 from stripe_manager.referral_manager.credit_router import router as credit_routers
 from stripe_manager.annual_manager.code_router import router as annual_code_routers
-
+from iap_manager.transaction_router import router as iap_v2_transaction_routers
+from iap_manager.notification_v2_router import router as iap_v2_notification_routers
 
 os.makedirs('logs', exist_ok=True)
 
@@ -75,6 +76,8 @@ app.include_router(credit_routers)
 
 app.include_router(verify_receipt_routers)
 app.include_router(notification_routers)
+app.include_router(iap_v2_transaction_routers)
+app.include_router(iap_v2_notification_routers)
 
 app.include_router(contact_enterprise_routers)
 app.include_router(contact_individual_routers)

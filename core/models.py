@@ -166,3 +166,31 @@ class CreditPackPurchase(Base):
     pack_size = Column(Integer, nullable=False) #10/30/50
     credits_added = Column(Integer, nullable=False) #同pack_size，冗余存一下方便对账
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class IapTransaction(Base):
+    """Apple 交易流水：幂等（transaction_id 主键）+ 退款回滚依据"""
+    __tablename__ = "iap_transactions"
+
+    transaction_id = Column(Text, primary_key=True)
+    original_transaction_id = Column(Text, nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    product_id = Column(Text, nullable=False)
+    product_type = Column(String(20), nullable=False)  # subscription / receipt_pack / voice_pack
+    bundle_id = Column(Text)
+    environment = Column(String(20))  # Sandbox / Production
+    purchased_at = Column(DateTime(timezone=True))
+    expires_at = Column(DateTime(timezone=True))
+    revoked_at = Column(DateTime(timezone=True))
+    receipts_added = Column(Integer, nullable=False, default=0)
+    voice_seconds_added = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AivoiceBalance(Base):
+    """语音永久余额（分钟包），不随月份清零"""
+    __tablename__ = "aivoice_balance"
+
+    user_id = Column(UUID(as_uuid=True), primary_key=True)
+    pack_seconds = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())

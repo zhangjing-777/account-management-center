@@ -10,4 +10,6 @@ cryptography
 stripe
 apscheduler
 pydantic-settings
+app-store-server-library>=3.1
+httpx
 
